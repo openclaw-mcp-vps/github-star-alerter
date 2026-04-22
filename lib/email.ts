@@ -1,87 +1,88 @@
 import { Resend } from "resend";
 
-import type { RepoMatch } from "@/lib/github";
-
-type TopicDigestBlock = {
-  topic: string;
-  threshold: number;
-  matches: RepoMatch[];
-};
+import type { RepoMatch } from "@/lib/types";
 
 type DailyDigestInput = {
   to: string;
-  plan: string;
-  byTopic: TopicDigestBlock[];
-  generatedAt: string;
+  dateLabel: string;
+  matches: RepoMatch[];
 };
 
-function buildDigestHtml(input: DailyDigestInput) {
-  const topicSections = input.byTopic
-    .filter((block) => block.matches.length > 0)
-    .map((block) => {
-      const rows = block.matches
+type DailyDigestResult = {
+  sent: boolean;
+  providerId: string | null;
+  reason: string | null;
+};
+
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "alerts@githubstaralerter.com";
+
+function buildTopicSections(matches: RepoMatch[]): string {
+  const grouped = matches.reduce<Record<string, RepoMatch[]>>((accumulator, item) => {
+    const key = item.topic;
+
+    if (!accumulator[key]) {
+      accumulator[key] = [];
+    }
+
+    accumulator[key].push(item);
+    return accumulator;
+  }, {});
+
+  return Object.entries(grouped)
+    .map(([topic, topicMatches]) => {
+      const rows = topicMatches
         .map(
-          (repo) => `
-            <tr>
-              <td style="padding:10px;border-bottom:1px solid #2f3742;vertical-align:top;">
-                <a href="${repo.url}" style="color:#7dd3fc;text-decoration:none;font-weight:600;">${repo.repoFullName}</a>
-                <div style="font-size:12px;color:#94a3b8;margin-top:4px;">${repo.description || "No description"}</div>
-              </td>
-              <td style="padding:10px;border-bottom:1px solid #2f3742;color:#86efac;text-align:right;white-space:nowrap;">${repo.dailyStars.toFixed(1)}/day</td>
-              <td style="padding:10px;border-bottom:1px solid #2f3742;color:#cbd5e1;text-align:right;white-space:nowrap;">${repo.totalStars.toLocaleString()}</td>
-            </tr>
-          `
+          (match) => `<li style="margin-bottom:12px;">
+<a href="${match.url}" style="color:#58a6ff;text-decoration:none;font-weight:600;">${match.repoFullName}</a>
+<div style="color:#8b949e;font-size:14px;">${match.description}</div>
+<div style="color:#c9d1d9;font-size:13px;">${match.stars.toLocaleString()} total stars • ${match.velocity24h} stars in last 24h • ${match.language ?? "Unknown"}</div>
+</li>`
         )
         .join("");
 
-      return `
-        <section style="margin-top:20px;">
-          <h2 style="margin:0 0 8px 0;color:#e2e8f0;font-size:16px;">#${block.topic}</h2>
-          <p style="margin:0 0 10px 0;color:#94a3b8;font-size:12px;">Threshold: ${block.threshold}+ stars/day</p>
-          <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;border:1px solid #2f3742;border-radius:8px;overflow:hidden;">
-            <thead>
-              <tr style="background:#111827;">
-                <th style="text-align:left;padding:10px;color:#cbd5e1;font-size:12px;border-bottom:1px solid #2f3742;">Repository</th>
-                <th style="text-align:right;padding:10px;color:#cbd5e1;font-size:12px;border-bottom:1px solid #2f3742;">Velocity</th>
-                <th style="text-align:right;padding:10px;color:#cbd5e1;font-size:12px;border-bottom:1px solid #2f3742;">Total Stars</th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </section>
-      `;
+      return `<section style="margin-top:20px;">
+<h2 style="font-size:18px;color:#f0f6fc;margin-bottom:8px;">#${topic}</h2>
+<ul style="list-style:none;padding:0;margin:0;">${rows}</ul>
+</section>`;
     })
     .join("");
-
-  return `
-    <div style="background:#0d1117;color:#e2e8f0;padding:24px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;">
-      <h1 style="margin:0 0 6px 0;font-size:20px;">GitHub Star Alerter Daily Digest</h1>
-      <p style="margin:0 0 18px 0;color:#94a3b8;font-size:13px;">Generated ${new Date(input.generatedAt).toUTCString()} • Plan: ${input.plan}</p>
-      ${topicSections || "<p style=\"color:#94a3b8;\">No repositories crossed your thresholds today.</p>"}
-      <p style="margin-top:20px;color:#64748b;font-size:12px;">You are receiving this because your subscription is active in GitHub Star Alerter.</p>
-    </div>
-  `;
 }
 
-export async function sendDailyDigestEmail(input: DailyDigestInput) {
-  const apiKey = process.env.RESEND_API_KEY;
-
-  if (!apiKey) {
-    console.warn("RESEND_API_KEY is missing. Skipping digest send.");
-    return { skipped: true };
+export async function sendDailyDigestEmail(input: DailyDigestInput): Promise<DailyDigestResult> {
+  if (!process.env.RESEND_API_KEY) {
+    return {
+      sent: false,
+      providerId: null,
+      reason: "RESEND_API_KEY is not configured"
+    };
   }
 
-  const resend = new Resend(apiKey);
-  const from = process.env.DIGEST_FROM_EMAIL ?? "alerts@githubstaralerter.com";
+  const resend = new Resend(process.env.RESEND_API_KEY);
 
-  const totalMatches = input.byTopic.reduce((sum, block) => sum + block.matches.length, 0);
+  const html = `
+<div style="font-family:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial; background:#0d1117; color:#c9d1d9; padding:24px;">
+  <h1 style="margin:0;color:#f0f6fc;font-size:24px;">GitHub Star Alerter</h1>
+  <p style="margin-top:8px;color:#8b949e;">Daily market-intel digest for ${input.dateLabel}</p>
+  <p style="margin-top:16px;">${input.matches.length} repositories crossed your star velocity thresholds.</p>
+  ${buildTopicSections(input.matches)}
+  <p style="margin-top:24px;color:#8b949e;font-size:12px;">Update your thresholds anytime from your dashboard.</p>
+</div>`;
 
-  await resend.emails.send({
-    from,
+  const textLines = input.matches.map(
+    (match) => `${match.repoFullName} (${match.topic}) - ${match.velocity24h}/24h stars - ${match.url}`
+  );
+
+  const response = await resend.emails.send({
+    from: FROM_EMAIL,
     to: input.to,
-    subject: `GitHub Star Digest: ${totalMatches} repos crossed your thresholds`,
-    html: buildDigestHtml(input)
+    subject: `GitHub Star Alerter: ${input.matches.length} high-velocity repos (${input.dateLabel})`,
+    html,
+    text: textLines.join("\n")
   });
 
-  return { sent: true };
+  return {
+    sent: Boolean(response.data?.id),
+    providerId: response.data?.id ?? null,
+    reason: response.error?.message ?? null
+  };
 }

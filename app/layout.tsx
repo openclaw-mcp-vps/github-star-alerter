@@ -1,50 +1,46 @@
 import type { Metadata } from "next";
-import Script from "next/script";
+import { Space_Grotesk, Source_Sans_3 } from "next/font/google";
 
-import "./globals.css";
-import { Geist } from "next/font/google";
-import { cn } from "@/lib/utils";
+import "@/app/globals.css";
 
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
+const headingFont = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-heading"
+});
 
-const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://github-star-alerter.com";
+const bodyFont = Source_Sans_3({
+  subsets: ["latin"],
+  variable: "--font-body"
+});
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
+  metadataBase: new URL("https://githubstaralerter.com"),
   title: {
     default: "GitHub Star Alerter",
     template: "%s | GitHub Star Alerter"
   },
   description:
-    "Track GitHub topics by star velocity and get a daily digest of repos breaking your thresholds before everyone else notices.",
+    "Daily market-intel digests for GitHub topics. Track star velocity thresholds and catch emerging competitors before they trend.",
   keywords: [
-    "GitHub topic monitoring",
-    "star velocity",
+    "GitHub stars",
     "market intelligence",
     "founder tools",
-    "competitor tracking"
+    "competitor tracking",
+    "GitHub topic monitoring"
   ],
   openGraph: {
     title: "GitHub Star Alerter",
     description:
-      "Daily email digests for high-velocity GitHub repos in your chosen topics. Built for founders watching market movement.",
-    url: siteUrl,
+      "Configure topic-level star thresholds and receive a daily digest of repositories crossing your velocity targets.",
+    url: "https://githubstaralerter.com",
     siteName: "GitHub Star Alerter",
-    images: [
-      {
-        url: "/og-image",
-        width: 1200,
-        height: 630,
-        alt: "GitHub Star Alerter dashboard preview"
-      }
-    ],
+    locale: "en_US",
     type: "website"
   },
   twitter: {
     card: "summary_large_image",
     title: "GitHub Star Alerter",
-    description: "Spot breakout repositories in your market niches with daily star-velocity digests.",
-    images: ["/og-image"]
+    description: "Daily GitHub trend intelligence for founders tracking new entrants and fast-moving tools."
   },
   robots: {
     index: true,
@@ -58,11 +54,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={cn("dark", "font-sans", geist.variable)}>
-      <body className="bg-[#0d1117] text-slate-100 antialiased">
-        <Script src="https://assets.lemonsqueezy.com/lemon.js" strategy="afterInteractive" />
-        {children}
-      </body>
+    <html className={`${headingFont.variable} ${bodyFont.variable}`} lang="en">
+      <body className="bg-[#0d1117] text-[#c9d1d9] [font-family:var(--font-body)] antialiased">{children}</body>
     </html>
   );
 }

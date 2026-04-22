@@ -1,129 +1,194 @@
+import type { Metadata } from "next";
 import Link from "next/link";
-import { BellRing, LineChart, Radar, ShieldCheck } from "lucide-react";
+import { BellRing, Compass, Flame, Mail, Radar, Sparkles } from "lucide-react";
 
 import { PricingCards } from "@/components/PricingCards";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
+export const metadata: Metadata = {
+  title: "Daily GitHub Trend Alerts",
+  description:
+    "GitHub Star Alerter sends a daily digest of repos in your topics that cross star velocity thresholds, so you can spot fast-moving markets early."
+};
 
 const problemPoints = [
-  "GitHub Explore and Trending are broad and noisy for niche market research.",
-  "By the time a repo reaches your timeline, early growth signals are usually gone.",
-  "Manual searching across multiple topics burns time and misses fast-moving projects."
-];
-
-const solutionPoints = [
   {
-    title: "Topic-level monitoring",
-    detail: "Track exactly the markets you care about with custom thresholds per topic.",
+    title: "Explore is too broad",
+    body: "Founders need a narrow signal for their exact niche, not a global feed dominated by hype cycles.",
+    icon: Compass
+  },
+  {
+    title: "Timing is everything",
+    body: "By the time a repo is everywhere on social feeds, the first-mover advantage is already gone.",
+    icon: Flame
+  },
+  {
+    title: "Manual tracking burns time",
+    body: "Checking star charts and topic pages every day is repetitive and easy to miss during busy product sprints.",
     icon: Radar
-  },
-  {
-    title: "Star velocity filtering",
-    detail: "Surface repos gaining stars quickly, not just repos that already became famous.",
-    icon: LineChart
-  },
-  {
-    title: "Daily founder digest",
-    detail: "Get one concise email each day with only the breakout repos worth your attention.",
-    icon: BellRing
   }
 ];
 
-const faqs = [
+const solutionSteps = [
   {
-    q: "How does star velocity work?",
-    a: "Each topic rule checks stars added over your chosen lookback window and compares the daily average against your threshold."
+    title: "Define your market topics",
+    body: "Track categories like ai-agents, static-site-generators, or workflow-automation with custom star filters.",
+    icon: Sparkles
   },
   {
-    q: "Do I need a GitHub token?",
-    a: "Public repo discovery works without one, but adding a token improves reliability and rate limits for deeper scans."
+    title: "Set velocity thresholds",
+    body: "Only surface repositories that cross both total stars and 24-hour star velocity requirements.",
+    icon: BellRing
   },
   {
-    q: "What happens after payment?",
-    a: "Lemon Squeezy sends a webhook to activate your subscription. Use the same purchase email to unlock the dashboard cookie instantly."
+    title: "Read one daily digest",
+    body: "Each morning, get an email with links, star counts, velocity, and topic labels so you can act quickly.",
+    icon: Mail
+  }
+];
+
+const faqItems = [
+  {
+    question: "How is velocity measured?",
+    answer:
+      "Velocity uses the last 24 hours of GitHub watch/star events for each candidate repo. Repositories must pass both your total-star floor and daily velocity floor."
   },
   {
-    q: "Who is this for?",
-    a: "Indie founders, PMs, and technical operators tracking early signs of new competitors or technology shifts."
+    question: "Can I run scans manually between digests?",
+    answer:
+      "Yes. The dashboard includes a Run Scan button so you can refresh results before launches, investor calls, or product planning sessions."
+  },
+  {
+    question: "How does access work after purchase?",
+    answer:
+      "Checkout is hosted by Stripe. After payment, enter your purchase email in the dashboard to claim access, which sets a secure cookie for future visits."
+  },
+  {
+    question: "Who is this built for?",
+    answer:
+      "Indie founders, product operators, and small teams that need lightweight competitive intelligence without enterprise tooling overhead."
   }
 ];
 
 export default function HomePage() {
   return (
-    <main className="relative overflow-x-hidden">
-      <div className="absolute left-[-10rem] top-[-8rem] h-72 w-72 rounded-full bg-cyan-500/15 blur-3xl" />
-      <div className="absolute right-[-12rem] top-[8rem] h-80 w-80 rounded-full bg-emerald-500/10 blur-3xl" />
-
-      <section className="mx-auto max-w-6xl px-6 pb-16 pt-12 md:pt-20">
-        <div className="rounded-2xl border border-slate-700/60 bg-slate-900/50 p-8 shadow-[0_0_80px_rgba(45,212,191,0.08)] md:p-12">
-          <p className="inline-flex items-center rounded-full border border-emerald-400/40 bg-emerald-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">
-            Market Intel for Founders
-          </p>
-          <h1 className="mt-5 text-4xl font-semibold leading-tight text-slate-50 md:text-6xl">
-            GitHub Star Alerter
-            <span className="mt-2 block text-2xl font-medium text-slate-300 md:text-3xl">
-              Daily digest of repos in your topics hitting star velocity thresholds.
-            </span>
-          </h1>
-          <p className="mt-6 max-w-2xl text-lg text-slate-300">
-            Stop scraping Explore pages. Define your niches, set minimum momentum, and receive a daily shortlist of repos
-            that are actually accelerating.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-4">
-            <Link
-              href="/dashboard"
-              className="rounded-lg bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400"
-            >
-              Open Dashboard
+    <main>
+      <header className="border-b border-[#30363d] bg-[#0d1117]/80 backdrop-blur">
+        <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#58a6ff]">GitHub Star Alerter</p>
+          <div className="flex items-center gap-3">
+            <Link href="/dashboard">
+              <Button variant="outline">Dashboard</Button>
             </Link>
-            <a
-              href="#pricing"
-              className="rounded-lg border border-slate-600 px-5 py-3 text-sm font-semibold text-slate-100 transition hover:border-slate-400"
-            >
-              View Pricing
+          </div>
+        </nav>
+      </header>
+
+      <section className="mx-auto flex max-w-6xl flex-col gap-8 px-6 pb-24 pt-20 lg:flex-row lg:items-center lg:gap-14">
+        <div className="flex-1">
+          <p className="mb-4 inline-flex rounded-full border border-[#30363d] bg-[#111827] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#8b949e]">
+            Market-Intel SaaS for Founders
+          </p>
+          <h1 className="[font-family:var(--font-heading)] text-4xl font-bold leading-tight text-[#f0f6fc] sm:text-5xl">
+            Catch emerging GitHub competitors before everyone else notices.
+          </h1>
+          <p className="mt-6 max-w-xl text-lg text-[#8b949e]">
+            Configure topic thresholds once, then get a daily digest of repositories accelerating in stars. No noisy feeds, no manual polling, no missed shifts.
+          </p>
+
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <Link href="/dashboard">
+              <Button size="lg">Start Tracking Topics</Button>
+            </Link>
+            <a href="#pricing">
+              <Button size="lg" variant="outline">
+                View Pricing
+              </Button>
             </a>
           </div>
         </div>
+
+        <Card className="flex-1 bg-[#0f1622]">
+          <CardHeader>
+            <CardTitle>What you get every day</CardTitle>
+            <CardDescription>One concise digest designed for fast founder decisions.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-4 text-sm text-[#c9d1d9]">
+              <li className="rounded-lg border border-[#30363d] bg-[#0d1117] p-3">
+                Repo links sorted by 24h star velocity so the fastest movers are first.
+              </li>
+              <li className="rounded-lg border border-[#30363d] bg-[#0d1117] p-3">
+                Topic context attached to each result so trends map back to markets you care about.
+              </li>
+              <li className="rounded-lg border border-[#30363d] bg-[#0d1117] p-3">
+                Threshold-driven filtering that ignores low-signal projects and vanity spikes.
+              </li>
+            </ul>
+          </CardContent>
+        </Card>
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 pb-14" id="problem">
-        <h2 className="text-2xl font-semibold text-slate-100 md:text-3xl">Why founder teams miss the signal</h2>
-        <div className="mt-6 grid gap-4 md:grid-cols-3">
-          {problemPoints.map((point) => (
-            <article key={point} className="rounded-xl border border-slate-800 bg-slate-900/50 p-5">
-              <p className="text-sm text-slate-300">{point}</p>
-            </article>
+      <section className="mx-auto max-w-6xl px-6 pb-24" id="problem">
+        <h2 className="[font-family:var(--font-heading)] text-3xl font-bold text-[#f0f6fc]">The Problem</h2>
+        <p className="mt-3 max-w-3xl text-[#8b949e]">
+          Founders tracking fast markets need sharp competitive intelligence. GitHub has the signal, but discovering it in time is still too manual.
+        </p>
+        <div className="mt-8 grid gap-5 md:grid-cols-3">
+          {problemPoints.map(({ title, body, icon: Icon }) => (
+            <Card key={title}>
+              <CardHeader>
+                <Icon className="h-5 w-5 text-[#f0883e]" />
+                <CardTitle className="mt-3 text-xl">{title}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-[#8b949e]">{body}</p>
+              </CardContent>
+            </Card>
           ))}
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 pb-14" id="solution">
-        <h2 className="text-2xl font-semibold text-slate-100 md:text-3xl">A practical workflow that stays focused</h2>
-        <div className="mt-6 grid gap-5 md:grid-cols-3">
-          {solutionPoints.map((point) => (
-            <article key={point.title} className="rounded-xl border border-slate-700/60 bg-slate-900 p-6">
-              <point.icon className="h-6 w-6 text-cyan-300" />
-              <h3 className="mt-3 text-base font-semibold text-slate-100">{point.title}</h3>
-              <p className="mt-2 text-sm text-slate-300">{point.detail}</p>
-            </article>
+      <section className="mx-auto max-w-6xl px-6 pb-24" id="solution">
+        <h2 className="[font-family:var(--font-heading)] text-3xl font-bold text-[#f0f6fc]">How It Works</h2>
+        <div className="mt-8 grid gap-5 md:grid-cols-3">
+          {solutionSteps.map(({ title, body, icon: Icon }) => (
+            <Card key={title}>
+              <CardHeader>
+                <Icon className="h-5 w-5 text-[#58a6ff]" />
+                <CardTitle className="mt-3 text-xl">{title}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-[#8b949e]">{body}</p>
+              </CardContent>
+            </Card>
           ))}
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 pb-10" id="pricing">
-        <PricingCards showAccessClaim={false} />
+      <section className="mx-auto max-w-6xl px-6 pb-24" id="pricing">
+        <h2 className="[font-family:var(--font-heading)] text-3xl font-bold text-[#f0f6fc]">Simple Pricing</h2>
+        <p className="mt-3 max-w-2xl text-[#8b949e]">
+          Hosted checkout runs through Stripe payment links. Pick your plan and unlock your dashboard in under a minute.
+        </p>
+        <div className="mt-8">
+          <PricingCards />
+        </div>
       </section>
 
-      <section className="mx-auto max-w-4xl px-6 pb-20" id="faq">
-        <div className="mb-5 flex items-center gap-2 text-sm text-emerald-300">
-          <ShieldCheck className="h-4 w-4" />
-          <span>FAQ</span>
-        </div>
-        <h2 className="text-2xl font-semibold text-slate-100 md:text-3xl">Questions founders ask before subscribing</h2>
-        <div className="mt-6 space-y-3">
-          {faqs.map((faq) => (
-            <article key={faq.q} className="rounded-lg border border-slate-800 bg-slate-900/60 p-5">
-              <h3 className="text-sm font-semibold text-slate-100">{faq.q}</h3>
-              <p className="mt-2 text-sm text-slate-300">{faq.a}</p>
-            </article>
+      <section className="mx-auto max-w-6xl px-6 pb-24" id="faq">
+        <h2 className="[font-family:var(--font-heading)] text-3xl font-bold text-[#f0f6fc]">FAQ</h2>
+        <div className="mt-8 space-y-4">
+          {faqItems.map((item) => (
+            <Card key={item.question}>
+              <CardHeader>
+                <CardTitle className="text-lg">{item.question}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-[#8b949e]">{item.answer}</p>
+              </CardContent>
+            </Card>
           ))}
         </div>
       </section>

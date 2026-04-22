@@ -1,62 +1,115 @@
 import { NextResponse } from "next/server";
 
-import { findMatchesForTopics } from "@/lib/github";
+import { hasDigestForDate, listUsersWithAccess, markDigestSent, updateScanResults } from "@/lib/db";
 import { sendDailyDigestEmail } from "@/lib/email";
-import { getActiveSubscribers, getUserTopicConfigs } from "@/lib/supabase";
+import { scanTopics } from "@/lib/github";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
-export async function GET(request: Request) {
+function isAuthorizedCronRequest(request: Request): boolean {
   const secret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get("authorization");
 
-  if (secret && authHeader !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!secret) {
+    return true;
   }
 
-  const subscribers = await getActiveSubscribers();
-  let emailsSent = 0;
-  let usersScanned = 0;
+  const authHeader = request.headers.get("authorization");
+  return authHeader === `Bearer ${secret}`;
+}
 
-  for (const subscriber of subscribers) {
-    const { email, plan } = subscriber;
-    if (!email) {
+async function runDailyDigest(request: Request) {
+  if (!isAuthorizedCronRequest(request)) {
+    return NextResponse.json({ error: "Unauthorized cron request." }, { status: 401 });
+  }
+
+  const users = await listUsersWithAccess();
+  const dateKey = new Date().toISOString().slice(0, 10);
+  const dateLabel = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric"
+  });
+
+  const summary: Array<{
+    email: string;
+    matchedRepos: number;
+    emailed: boolean;
+    reason: string | null;
+  }> = [];
+
+  for (const user of users) {
+    if (user.topics.length === 0) {
+      summary.push({
+        email: user.email,
+        matchedRepos: 0,
+        emailed: false,
+        reason: "No topics configured"
+      });
       continue;
     }
 
-    const topics = await getUserTopicConfigs(email);
-    if (topics.length === 0) {
+    const alreadySent = await hasDigestForDate(user.email, dateKey);
+
+    if (alreadySent) {
+      summary.push({
+        email: user.email,
+        matchedRepos: user.lastMatches.length,
+        emailed: false,
+        reason: "Digest already sent for today"
+      });
       continue;
     }
 
-    usersScanned += 1;
+    try {
+      const matches = await scanTopics(user.topics);
+      await updateScanResults(user.email, matches);
 
-    const matches = await findMatchesForTopics(topics);
-    if (matches.length === 0) {
-      continue;
+      if (matches.length === 0) {
+        summary.push({
+          email: user.email,
+          matchedRepos: 0,
+          emailed: false,
+          reason: "No repositories crossed thresholds"
+        });
+        continue;
+      }
+
+      const emailResult = await sendDailyDigestEmail({
+        to: user.email,
+        dateLabel,
+        matches
+      });
+
+      if (emailResult.sent) {
+        await markDigestSent(user.email, dateKey);
+      }
+
+      summary.push({
+        email: user.email,
+        matchedRepos: matches.length,
+        emailed: emailResult.sent,
+        reason: emailResult.reason
+      });
+    } catch (cause: unknown) {
+      summary.push({
+        email: user.email,
+        matchedRepos: 0,
+        emailed: false,
+        reason: cause instanceof Error ? cause.message : "Unexpected digest error"
+      });
     }
-
-    const byTopic = topics.map((topicConfig) => ({
-      topic: topicConfig.topic,
-      threshold: topicConfig.minDailyStars,
-      matches: matches.filter((match) => match.topic.toLowerCase() === topicConfig.topic.toLowerCase())
-    }));
-
-    await sendDailyDigestEmail({
-      to: email,
-      plan,
-      byTopic,
-      generatedAt: new Date().toISOString()
-    });
-
-    emailsSent += 1;
   }
 
   return NextResponse.json({
-    ok: true,
-    subscribers: subscribers.length,
-    usersScanned,
-    emailsSent
+    date: dateKey,
+    usersProcessed: users.length,
+    summary
   });
+}
+
+export async function GET(request: Request) {
+  return runDailyDigest(request);
+}
+
+export async function POST(request: Request) {
+  return runDailyDigest(request);
 }

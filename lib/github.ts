@@ -1,156 +1,92 @@
-import { z } from "zod";
+import type { RepoMatch, TopicConfig } from "@/lib/types";
 
-export const topicThresholdSchema = z.object({
-  topic: z.string().trim().min(2).max(39),
-  minDailyStars: z.number().int().min(1).max(300),
-  minTotalStars: z.number().int().min(10).max(2000000),
-  lookbackDays: z.number().int().min(1).max(14)
-});
-
-export type TopicThreshold = z.infer<typeof topicThresholdSchema>;
-
-export type RepoMatch = {
-  topic: string;
-  repoFullName: string;
-  url: string;
-  description: string;
-  totalStars: number;
-  dailyStars: number;
-  starsInLookback: number;
-  lookbackDays: number;
-  language: string | null;
-  pushedAt: string;
-};
-
-type GitHubSearchRepo = {
+type SearchRepositoryItem = {
   full_name: string;
   html_url: string;
   description: string | null;
-  stargazers_count: number;
-  pushed_at: string;
   language: string | null;
+  stargazers_count: number;
+};
+
+type SearchResponse = {
+  items: SearchRepositoryItem[];
+};
+
+type RepoEvent = {
+  type: string;
   created_at: string;
 };
 
-function githubHeaders() {
+const GITHUB_API_BASE = "https://api.github.com";
+
+function getHeaders(accept: string = "application/vnd.github+json"): HeadersInit {
   const token = process.env.GITHUB_TOKEN;
 
+  if (!token) {
+    return {
+      Accept: accept,
+      "User-Agent": "github-star-alerter"
+    };
+  }
+
   return {
-    Accept: "application/vnd.github+json",
-    "User-Agent": "github-star-alerter",
-    ...(token ? { Authorization: `Bearer ${token}` } : {})
+    Accept: accept,
+    Authorization: `Bearer ${token}`,
+    "User-Agent": "github-star-alerter"
   };
 }
 
-async function searchTopicRepositories(topicConfig: TopicThreshold): Promise<GitHubSearchRepo[]> {
-  const query = [
-    `topic:${topicConfig.topic}`,
-    `stars:>=${topicConfig.minTotalStars}`,
-    "archived:false",
-    "fork:false"
-  ].join(" ");
-
-  const params = new URLSearchParams({
-    q: query,
-    sort: "updated",
-    order: "desc",
-    per_page: "20"
-  });
-
-  const response = await fetch(`https://api.github.com/search/repositories?${params.toString()}`, {
-    headers: githubHeaders(),
+async function githubFetch<T>(url: string, accept?: string): Promise<T> {
+  const response = await fetch(url, {
+    headers: getHeaders(accept),
     next: { revalidate: 0 }
   });
 
   if (!response.ok) {
-    throw new Error(`GitHub search failed for topic "${topicConfig.topic}" with ${response.status}`);
+    const body = await response.text();
+    throw new Error(`GitHub API error ${response.status}: ${body}`);
   }
 
-  const payload = (await response.json()) as { items: GitHubSearchRepo[] };
-  return payload.items ?? [];
+  return (await response.json()) as T;
 }
 
-async function fetchStarsInLookback(repoFullName: string, lookbackDays: number): Promise<number | null> {
-  const [owner, repo] = repoFullName.split("/");
-  if (!owner || !repo) {
-    return null;
+async function fetchTopicCandidates(topic: string, minStars: number): Promise<SearchRepositoryItem[]> {
+  const query = `topic:${topic} stars:>=${minStars} archived:false fork:false`;
+  const encodedQuery = encodeURIComponent(query);
+  const url = `${GITHUB_API_BASE}/search/repositories?q=${encodedQuery}&sort=updated&order=desc&per_page=20`;
+
+  const data = await githubFetch<SearchResponse>(url);
+  return data.items ?? [];
+}
+
+async function fetchRecentStarVelocity(repoFullName: string): Promise<number> {
+  const url = `${GITHUB_API_BASE}/repos/${repoFullName}/events?per_page=100`;
+
+  try {
+    const events = await githubFetch<RepoEvent[]>(url);
+    const now = Date.now();
+    const threshold = now - 24 * 60 * 60 * 1000;
+
+    return events.filter((event) => {
+      if (event.type !== "WatchEvent") {
+        return false;
+      }
+
+      const timestamp = Date.parse(event.created_at);
+      return Number.isFinite(timestamp) && timestamp >= threshold;
+    }).length;
+  } catch {
+    return 0;
   }
-
-  const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
-
-  const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/stargazers?per_page=100`, {
-    headers: {
-      ...githubHeaders(),
-      Accept: "application/vnd.github.star+json"
-    },
-    next: { revalidate: 0 }
-  });
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const payload = (await response.json()) as Array<{ starred_at?: string }>;
-  const recent = payload.filter((entry) => {
-    if (!entry.starred_at) {
-      return false;
-    }
-
-    return new Date(entry.starred_at).getTime() >= since.getTime();
-  });
-
-  return recent.length;
 }
 
-function heuristicLookbackStars(totalStars: number, createdAt: string, lookbackDays: number) {
-  const ageMs = Date.now() - new Date(createdAt).getTime();
-  const ageDays = Math.max(1, ageMs / (24 * 60 * 60 * 1000));
-  const starsPerDay = totalStars / ageDays;
-  return Math.round(starsPerDay * lookbackDays);
-}
+export async function scanSingleTopic(topicConfig: TopicConfig): Promise<RepoMatch[]> {
+  const repos = await fetchTopicCandidates(topicConfig.topic, topicConfig.minStars);
 
-async function withConcurrency<T, U>(
-  items: T[],
-  limit: number,
-  run: (item: T, index: number) => Promise<U>
-): Promise<U[]> {
-  const results: U[] = [];
-  const executing = new Set<Promise<void>>();
+  const checks = repos.slice(0, 12).map(async (repo): Promise<RepoMatch | null> => {
+    const velocity24h = await fetchRecentStarVelocity(repo.full_name);
 
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items[index];
-    const task = run(item, index).then((result) => {
-      results.push(result);
-    });
-
-    const tracked = task.finally(() => {
-      executing.delete(tracked);
-    });
-
-    executing.add(tracked);
-
-    if (executing.size >= limit) {
-      await Promise.race(executing);
-    }
-  }
-
-  await Promise.all(executing);
-  return results;
-}
-
-export async function findMatchesForTopic(topicConfig: TopicThreshold): Promise<RepoMatch[]> {
-  const repos = await searchTopicRepositories(topicConfig);
-
-  const rawMatches = await withConcurrency(repos, 4, async (repo) => {
-    const exactLookbackStars = await fetchStarsInLookback(repo.full_name, topicConfig.lookbackDays);
-    const starsInLookback =
-      typeof exactLookbackStars === "number"
-        ? exactLookbackStars
-        : heuristicLookbackStars(repo.stargazers_count, repo.created_at, topicConfig.lookbackDays);
-
-    const dailyStars = Number((starsInLookback / topicConfig.lookbackDays).toFixed(2));
-
-    if (dailyStars < topicConfig.minDailyStars) {
+    if (velocity24h < topicConfig.minVelocity) {
       return null;
     }
 
@@ -158,26 +94,26 @@ export async function findMatchesForTopic(topicConfig: TopicThreshold): Promise<
       topic: topicConfig.topic,
       repoFullName: repo.full_name,
       url: repo.html_url,
-      description: repo.description ?? "",
-      totalStars: repo.stargazers_count,
-      dailyStars,
-      starsInLookback,
-      lookbackDays: topicConfig.lookbackDays,
+      description: repo.description ?? "No description provided",
       language: repo.language,
-      pushedAt: repo.pushed_at
-    } satisfies RepoMatch;
+      stars: repo.stargazers_count,
+      velocity24h,
+      matchedAt: new Date().toISOString()
+    };
   });
 
+  const rawMatches = await Promise.all(checks);
+
   return rawMatches
-    .filter((repo): repo is RepoMatch => repo !== null)
-    .sort((a, b) => b.dailyStars - a.dailyStars || b.totalStars - a.totalStars)
-    .slice(0, 25);
+    .filter((match): match is RepoMatch => match !== null)
+    .sort((a, b) => b.velocity24h - a.velocity24h || b.stars - a.stars);
 }
 
-export async function findMatchesForTopics(topicConfigs: TopicThreshold[]): Promise<RepoMatch[]> {
-  const parsedTopics = z.array(topicThresholdSchema).parse(topicConfigs);
+export async function scanTopics(topics: TopicConfig[]): Promise<RepoMatch[]> {
+  const allMatches = await Promise.all(topics.map((topic) => scanSingleTopic(topic)));
 
-  const perTopic = await Promise.all(parsedTopics.map((topicConfig) => findMatchesForTopic(topicConfig)));
-
-  return perTopic.flat().sort((a, b) => b.dailyStars - a.dailyStars || b.totalStars - a.totalStars);
+  return allMatches
+    .flat()
+    .sort((a, b) => b.velocity24h - a.velocity24h || b.stars - a.stars)
+    .slice(0, 50);
 }
